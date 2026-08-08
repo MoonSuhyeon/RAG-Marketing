@@ -1,409 +1,1128 @@
-• 숙소명·객실·편의시설·가격·이용규칙 등 상품 상세정보의 문서 구조를 분석하고 RAG 기반 정보 활용 구조 설계
+# RAG-Marketing
 
-• 숙소 상세정보의 특성에 맞는 청킹·임베딩·메타데이터 전략을 설계하고 검색 가능한 지식베이스 구축
-
-• 숙소·지역·객실·편의시설 등 검색·콘텐츠 생성에 필요한 메타데이터 스키마 설계 및 관리
-
-• 숙소 정보를 Vector DB에 적재하고 상품 변경사항이 검색 시스템에 반영되도록 Indexing Pipeline 구축
-
-• 숙소 상세정보를 검색·조합하여 고객 세그먼트 및 마케팅 목적에 맞는 콘텐츠를 생성하는 RAG Workflow 설계
-
-• 검색 결과의 정확성·관련성 및 생성 콘텐츠의 정보 정합성을 평가하고 검색·프롬프트·청킹 전략을 실험하며 개선
-
-# Advanced RAG System (v2 ~ v26)
-
-단순한 RAG 구현을 넘어, 검색 품질 → 추론 구조 → 관측 가능성 → 자동 평가 → 실험 기반 개선 → 자동 실패 학습 → 병렬화 → 인증/모니터링 → 아키텍처 분리 → Agentic 검색 → 실시간 응답 + 정량 검증까지 확장된 엔드투엔드 RAG 엔지니어링 시스템입니다.
-
-**LangChain / LlamaIndex 없이 전 구성요소를 직접 구현**했으며, 각 버전은 실제로 관찰된 문제에서 출발합니다.
+> Airbnb형 숙박 플랫폼의 **숙소 상세정보를 활용한 RAG 기반 Marketing Intelligence & Content Generation 시스템**
+>
+> 숙소명·객실·편의시설·가격·이용규칙·지역 정보 등 상품 상세정보를 구조화하고, RAG를 통해 고객 세그먼트와 마케팅 목적에 맞는 콘텐츠를 생성하는 **End-to-End RAG 시스템**입니다.
 
 ---
 
-## 목차
+# 프로젝트 개요
 
-- [스택](#스택)
-- [파이프라인 구성요소 진화](#파이프라인-구성요소-진화)
-- [시스템 진화](#시스템-진화)
-- [버전별 해결 문제 요약](#버전별-해결-문제-요약)
-- [빠른 시작](#빠른-시작)
-- [폴더 구조](#폴더-구조)
+RAG-Marketing은 Airbnb형 숙박 플랫폼에서 운영되는 다양한 숙소 정보를 AI가 정확하게 검색하고 활용할 수 있도록 **숙소 정보 → 지식베이스 → 검색 → 콘텐츠 생성**의 전체 Pipeline을 구축한 프로젝트입니다.
 
----
+단순한 문서 기반 Q&A를 넘어 숙소 상세정보를 마케팅 콘텐츠 생성에 활용할 수 있도록 다음 구조를 설계합니다.
 
-## 스택
-
-### 파이프라인 구성요소
-
-| 구성요소 | 패키지 | 모델 / 종류 | 특징 |
-|---------|--------|------------|------|
-| **문서 로드** | `pdfplumber` | — (rule-based PDF 파서) | PyMuPDF/PyPDF2 대비 표·레이아웃 추출에 강함 |
-| **텍스트 분할** | 직접 구현 (`re` 모듈) | — (Rule-based + Semantic 2종) | `RecursiveCharacterTextSplitter` 없이 직접 구현 |
-| **임베딩** | `openai` SDK | `text-embedding-3-small` | API 호출 + MD5 해시 기반 디스크 캐시 |
-| **벡터 스토어** | `faiss` | `IndexFlatIP` (내적 전수 탐색) | In-memory, 청크·문장·키워드 3인덱스 구조 |
-| **리트리버** | `faiss` + `rank_bm25` | Dense + BM25Okapi Hybrid | Dense/BM25 점수 RRF 병합 |
-| **리랭커** | `openai` SDK | `gpt-4o-mini` (0~10 채점) | LLM-as-Reranker. 전용 모델(Cohere/BGE) 없음 |
-| **체인** | `openai` SDK | `gpt-4o-mini` | Chat Completions 직접 호출, 3단계 Multi-doc chain |
-
-### 아키텍처
-
+```text
+숙소 상세정보
+      ↓
+문서 구조 분석
+      ↓
+Chunking
+      ↓
+Embedding
+      ↓
+Metadata
+      ↓
+Vector DB
+      ↓
+Hybrid Retrieval
+      ↓
+Reranking
+      ↓
+Context Compression
+      ↓
+RAG Workflow
+      ↓
+고객 세그먼트 / 마케팅 목적
+      ↓
+Marketing Content Generation
 ```
-[Client] Streamlit (client_app.py)
-    ↓ HTTP / SSE
-[Server] FastAPI (server_api.py)
-    ├── routers/auth.py      — JWT 인증
-    ├── routers/docs.py      — PDF 업로드·인덱싱
-    ├── routers/chat.py      — RAG 질의응답·Streaming
-    ├── routers/metrics.py   — 지표·로그·실패 데이터셋
-    └── routers/admin.py     — 사용자 관리
+
+---
+
+# Problem
+
+숙박 플랫폼에서는 하나의 숙소에도 다양한 정보가 존재합니다.
+
+```text
+숙소
+├── 숙소명
+├── 숙소 설명
+├── 객실
+├── 가격
+├── 편의시설
+├── 위치
+├── 주변 관광지
+├── 이용규칙
+├── 체크인 / 체크아웃
+├── 취소 / 환불 정책
+└── 호스트 정보
+```
+
+이 정보가 여러 문서와 필드에 분산되어 있을 경우 LLM이 전체 데이터를 그대로 읽어 콘텐츠를 생성하면 다음과 같은 문제가 발생할 수 있습니다.
+
+* 필요한 숙소 정보를 정확하게 찾지 못함
+* 서로 다른 숙소의 정보가 혼합됨
+* 가격·객실·편의시설 등 핵심 정보가 누락됨
+* 존재하지 않는 편의시설이나 서비스를 생성
+* 정책과 실제 숙소 정보가 불일치
+* 고객 세그먼트에 맞지 않는 콘텐츠 생성
+
+따라서 **숙소 정보를 검색 가능한 지식 구조로 만들고, 생성 전에 필요한 정보만 정확하게 검색하는 구조**가 필요합니다.
+
+---
+
+# 주요 업무
+
+## 1. 숙소 상세정보 구조 분석 및 RAG 설계
+
+숙소명·객실·편의시설·가격·이용규칙·위치 등 숙소 상품 정보의 구조를 분석하고 RAG 기반 정보 활용 구조를 설계합니다.
+
+```text
+Property
+│
+├── Basic Information
+│   ├── name
+│   ├── description
+│   └── location
+│
+├── Room
+│   ├── room_type
+│   ├── capacity
+│   ├── price
+│   └── amenities
+│
+├── Policy
+│   ├── check_in
+│   ├── check_out
+│   ├── cancellation
+│   └── house_rules
+│
+└── Local Information
+    ├── attractions
+    ├── transportation
+    └── neighborhood
+```
+
+숙소 데이터를 단순 텍스트로 취급하지 않고 **업무 도메인과 검색 목적에 맞는 정보 단위로 구조화**합니다.
+
+---
+
+# 2. Chunking / Embedding / Metadata 설계
+
+숙소 상세정보의 특성에 맞춰 검색 단위를 설계합니다.
+
+예를 들어 단순히 일정한 글자 수로 자르는 것이 아니라 정보의 의미를 보존하도록 구성합니다.
+
+```text
+숙소 설명
+      ↓
+숙소 기본정보 Chunk
+
+객실 정보
+      ↓
+객실별 Chunk
+
+편의시설
+      ↓
+Amenity Chunk
+
+이용규칙
+      ↓
+Policy Chunk
+
+주변 정보
+      ↓
+Location Chunk
+```
+
+각 Chunk에는 검색 및 필터링에 필요한 메타데이터를 함께 저장합니다.
+
+```text
+property_id
+property_type
+room_id
+region
+amenity_type
+price_range
+language
+document_type
+updated_at
+```
+
+이를 통해 단순한 의미 검색뿐 아니라 **숙소·지역·객실·정보 유형 단위의 정밀 검색**이 가능하도록 설계합니다.
+
+---
+
+# 3. 숙소 지식베이스 구축
+
+숙소 상세정보를 Embedding하고 Vector DB에 적재하여 검색 가능한 Knowledge Base를 구축합니다.
+
+```text
+Property Data
+      ↓
+Document Parser
+      ↓
+Chunking
+      ↓
+Metadata Enrichment
+      ↓
+Embedding
+      ↓
+Vector DB
+```
+
+숙소 정보가 변경될 경우 변경된 데이터만 다시 Indexing할 수 있도록 구성합니다.
+
+```text
+숙소 정보 변경
+      ↓
+변경 감지
+      ↓
+해당 Property Chunk 재생성
+      ↓
+Embedding 갱신
+      ↓
+Vector DB Update
+```
+
+이를 통해 가격·편의시설·이용규칙 등의 변경사항이 검색 결과에 반영되도록 합니다.
+
+---
+
+# 4. Indexing Pipeline 구축
+
+숙소 데이터의 초기 적재뿐 아니라 변경사항을 검색 시스템에 반영하는 Indexing Pipeline을 설계합니다.
+
+```text
+Property DB
     ↓
-[Engine] rag_engine.py
-    ├── MultiHopPlanner   — 질문 분해·hop별 검색·종합
-    ├── SelfRAGChecker    — 검색 충분성 판단·자기 교정
-    ├── AsyncRAGEngine    — asyncio 기반 비동기 파이프라인
-    ├── ToolRegistry      — Calculator·DateTime·WebSearch
-    ├── MetricsCollector  — P50/P95/P99 지연 측정
-    ├── FailureDataset    — 실패 케이스 저장·JSONL export
-    └── UserManager       — 사용자 인증·Rate Limit
+Extract
     ↓
-[Index] FAISS (IndexFlatIP) — in-memory
-    ├── chunk_index    — 청크 단위 벡터
-    ├── sent_index     — 문장 단위 벡터
-    └── kw_index       — 키워드 단위 벡터
-[Eval] evaluate_ragas.py — Faithfulness · Answer Relevancy · Context Precision
+Transform
+ ┌───────────────┐
+ │ Chunking      │
+ │ Metadata      │
+ │ Embedding     │
+ └───────────────┘
+    ↓
+Load
+    ↓
+Vector DB
+```
+
+주요 처리 대상:
+
+* 숙소 신규 등록
+* 숙소 정보 수정
+* 객실 변경
+* 가격 변경
+* 편의시설 변경
+* 이용규칙 변경
+* 숙소 삭제 / 비활성화
+
+변경된 숙소만 재처리하여 불필요한 Embedding API 호출과 Indexing 비용을 줄입니다.
+
+---
+
+# 5. Hybrid Retrieval 설계
+
+숙소 검색에서는 의미 기반 검색뿐 아니라 정확한 키워드 검색도 중요합니다.
+
+예:
+
+> "제주도에서 수영장이 있고 반려동물 동반 가능한 숙소"
+
+```text
+Query
+ ↓
+Query Analysis
+ ↓
+┌─────────────────┬─────────────────┐
+│ Dense Search    │ BM25 Search     │
+│ 의미 기반 검색    │ 키워드 기반 검색   │
+└────────┬────────┴────────┬────────┘
+         └─────────┬───────┘
+                   ↓
+                  RRF
+                   ↓
+                Reranking
+                   ↓
+             Relevant Context
+```
+
+Dense Retrieval과 BM25를 결합하여 의미적 유사성과 정확한 키워드 매칭을 동시에 확보합니다.
+
+---
+
+# 6. Metadata 기반 검색
+
+숙소 데이터에서는 Metadata Filtering이 중요하기 때문에 Vector Search와 Metadata Filter를 함께 사용합니다.
+
+예:
+
+```text
+Query:
+"제주도 가족 여행에 좋은 숙소"
+
+Filter:
+region = "Jeju"
+capacity >= 4
+property_status = "active"
+```
+
+검색 구조:
+
+```text
+User Query
+    ↓
+Intent / Metadata Extraction
+    ↓
+Metadata Filtering
+    ↓
+Vector Search
+    ↓
+BM25 Search
+    ↓
+RRF
+    ↓
+Reranking
+```
+
+이를 통해 전체 숙소를 대상으로 검색하는 것보다 **업무적으로 의미 있는 후보군을 먼저 좁힌 뒤 관련 정보를 검색**할 수 있도록 구성합니다.
+
+---
+
+# 7. Marketing RAG Workflow
+
+RAG의 최종 목적을 단순한 질문 응답이 아니라 **숙소 정보를 활용한 마케팅 콘텐츠 생성**으로 확장합니다.
+
+예:
+
+> "20대 커플을 대상으로 제주 바다 근처 숙소를 인스타그램 광고 문구로 만들어줘."
+
+```text
+Marketing Request
+        ↓
+Customer Segment Analysis
+        ↓
+Marketing Objective
+        ↓
+Property Filter
+        ↓
+Relevant Information Retrieval
+        ↓
+Reranking
+        ↓
+Context Compression
+        ↓
+Content Generation
+        ↓
+Fact Validation
+        ↓
+Marketing Content
 ```
 
 ---
 
-## 파이프라인 구성요소 진화
+# 8. 고객 세그먼트별 콘텐츠 생성
 
-각 구성요소에 어떤 버전에서 어떤 기능이 추가됐는지 정리합니다.
+동일한 숙소 정보라도 고객 세그먼트에 따라 강조해야 할 정보가 달라지도록 설계합니다.
 
-```
-┌─────────────────┬──────────────────────────────────────────────────────────────────────┐
-│  구성 요소       │  추가된 기능 (버전)                                                   │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│  문서 로드       │  v1  PyPDF2 → pdfplumber 교체 (한글 깨짐 해결)                        │
-│  pdfplumber     │                                                                      │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│                 │  v1~4  기본 문단/문장 경계 분할                                       │
-│  텍스트 분할     │  v5   Overlap 청킹: 청크 경계 손실 방지 (이전 청크 끝 100자 중복 포함) │
-│  직접 구현       │  v5   Semantic 청킹: 문장 임베딩 코사인 유사도로 주제 전환점 자동 탐지 │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│                 │  v1   HuggingFace SentenceTransformer (로컬)                          │
-│  임베딩          │  v2   OpenAI text-embedding-3-small 으로 교체 (API)                   │
-│  OpenAI API     │  v7   Multi-Vector: 청크·문장·키워드 3종류 임베딩 생성                │
-│                 │  v19  embed_cache: MD5 해시 기반 디스크 캐시 분리 (API 중복 호출 방지) │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│  벡터 스토어     │  v1   FAISS IndexFlatIP 첫 도입                                       │
-│  FAISS          │  v7   Multi-Vector Index: 청크/문장/키워드 IndexFlatIP 3개 구조       │
-│  IndexFlatIP    │                                                                      │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│                 │  v1   Dense only (FAISS 단독)                                         │
-│                 │  v4   BM25Okapi 추가 → Hybrid (Dense + BM25 RRF 통합)                │
-│                 │  v8   Query Routing: 6개 의도 분류 → 검색 전략 자동 선택              │
-│  리트리버        │  v9   Pre-filtering + Dynamic Retrieval (의도별 파라미터 자동 조정)   │
-│  FAISS +        │  v13  Fallback: 평가 낮으면 파라미터 높여 재검색                       │
-│  BM25Okapi      │  v19  Multi-Vector: 청크/문장/키워드 3채널 동시 검색                  │
-│  (Hybrid)       │  v21  병렬 검색: ThreadPoolExecutor 4채널 동시 실행 (대기시간 단축)   │
-│                 │  v25  Multi-Hop: 복합 질문 → sub-query 분해 → 순차 검색 → 종합        │
-│                 │  v25  Self-RAG: 검색 결과 충분성 자동 판단 → 불충분 시 재검색          │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│                 │  v4   LLM-as-Reranker 첫 도입 (gpt-4o-mini, 0~10 채점)               │
-│  리랭커          │  v10  Tracer: 리랭커 latency·토큰 span 추적                           │
-│  gpt-4o-mini    │  v21  LongContextReorder: 고점수 청크를 프롬프트 앞/뒤 배치           │
-│                 │        (Lost in the Middle 논문 — 추가 LLM 호출 없음)                 │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│                 │  v1~2  단순 단일 LLM 호출                                              │
-│                 │  v3   Query Rewrite: 질문 재작성으로 검색 recall 향상                  │
-│                 │  v7   Multi-doc Chain: 요약(step1) → 관계분석(step2) → 최종답변(step3)│
-│                 │  v11  QueryResultCache: 동일 쿼리 결과 재사용                          │
-│                 │  v12  AnswerCache: 완성된 답변 TTL 캐시                                │
-│  체인            │  v12  Self-Refinement: Draft → Critique → Refine (3단계 자기검토)    │
-│  gpt-4o-mini    │  v15  LLM 평가: 8개 필드 구조화 평가 (정확도/관련성/환각/신뢰도...)    │
-│                 │  v19  Context Compression Phase 1: 임베딩 유사도로 관련 문장만 추출   │
-│                 │  v21  Context Compression Phase 2: 청크 간 중복 문장 제거             │
-│                 │  v21  Tool-Augmented RAG: 계산 의도 탐지 → Python 실행 → 결과 주입    │
-│                 │  v23  LLM Compression Phase 3: LLM이 직접 압축 (프롬프트 최소화)      │
-│                 │  v23  ToolRegistry: 함수 호출 4종 (계산기·날짜·검색·단위변환)         │
-│                 │  v23  AsyncRAGEngine: asyncio.gather() 비동기 파이프라인               │
-│                 │  v25  Multi-Hop synthesize: hop별 중간답변 → 최종 종합                │
-│                 │  v26  Streaming SSE: stream=True 토큰 실시간 yield                    │
-├─────────────────┼──────────────────────────────────────────────────────────────────────┤
-│                 │  v10  Tracer: span 기반 단계별 latency·토큰 추적                       │
-│                 │  v20  FailureDataset: 실패 케이스 자동 분류·저장·JSONL 내보내기        │
-│  운영/인프라     │  v22  MetricsCollector: P50/P95/P99, 환각률, 알림, Prometheus 내보내기│
-│  (파이프라인     │  v22  UserManager: 로그인·역할·시간당 Rate Limit                      │
-│   외부)          │  v23  3파일 분리: rag_engine / server_api / client_app                │
-│                 │  v24  config.py + routers/ 구조화 (표준 FastAPI 아키텍처)              │
-│                 │  v26  RAGAS 평가 로그: 질문·답변·컨텍스트 자동 저장                    │
-└─────────────────┴──────────────────────────────────────────────────────────────────────┘
+### 커플
+
+```text
+오션뷰
+프라이빗 공간
+감성적인 인테리어
+주변 맛집
 ```
 
----
+### 가족
 
-## 시스템 진화
-
-각 버전은 실제로 관찰된 문제에서 출발합니다. **문제 → 해결 → 효과** 순서로 설계 근거를 기술합니다.
-
----
-
-### v2~v3: API 전환 + 기초 검색
-
-**문제** 로컬 모델은 품질이 낮고, 텍스트 전체를 그대로 넘기면 관련 없는 내용까지 LLM이 읽어야 합니다.
-
-**해결** OpenAI Embedding + GPT API로 전환, 코사인 유사도 기반 유사 청크만 검색.
-
-**효과** 품질 기반선 확보, LLM이 읽는 컨텍스트 범위를 관련 구간으로 좁힘.
-
----
-
-### v4~v5: Query Rewriting + Semantic Chunking
-
-**문제** 질문을 그대로 검색하면 의미 파악에 실패하고, 고정 길이 청킹은 문맥을 중간에 끊습니다.
-
-**해결** LLM으로 질문을 재작성해 검색 의도를 명확히 하고, Overlap/Semantic Chunking으로 문맥 단절 제거.
-
-**효과** 검색 관련성 향상, 청크 경계에서 발생하는 정보 손실 감소.
-
----
-
-### v6~v8: 출처 인용 + Multi-doc + Recall 보강
-
-**문제** 답변에 출처가 없어 신뢰도가 낮고, 단일 청크로는 복합 질문에 답하지 못하며, 키워드 검색을 배제하면 정확한 고유명사·수치가 누락됩니다.
-
-**해결**
-- Source attribution (`📌 요약 / 📖 근거 / ✅ 결론` 포맷)
-- 3단계 Multi-doc reasoning (요약 → 관계 분석 → 종합)
-- Embedding Pre-filter + `(chunk, source)` 튜플로 출처 추적
-
-**효과** 답변 신뢰도·투명성 향상, 복합 질문 처리 가능, Recall 개선.
-
----
-
-### v9~v11: Observability (블랙박스 탈출)
-
-**문제** 답변이 좋은지 나쁜지 알 방법이 없고, 어디서 지연이 발생하는지도 보이지 않습니다.
-
-**해결** LLM 자동 평가(accuracy/relevance/hallucination), Span 기반 Tracing, Token usage·latency 측정, 대시보드 UI.
-
-**효과** 품질 문제와 병목을 수치로 파악 → 다음 개선 방향 결정 가능.
-
----
-
-### v12~v14: Hybrid Search + 라우팅 + Ablation
-
-**문제** Dense Search만 사용하면 키워드 누락으로 Recall이 떨어집니다. 어떤 구성 요소가 실제로 도움이 되는지도 알 수 없습니다.
-
-**해결**
-- BM25 + Dense 결과를 RRF(Reciprocal Rank Fusion)로 병합 → 키워드 Recall 향상
-- Reranking으로 상위 결과 Precision 향상
-- Query Routing으로 질문 유형별(factual / reasoning / exploratory …) 최적 전략 자동 선택
-- Ablation Study: 구성 요소 ON/OFF 자동 실험으로 기여도 수치화
-
-**효과** Recall + Precision 동시 향상, 과학적 구성 검증.
-
----
-
-### v15~v17: 답변 품질 자동화 + 세밀한 검색
-
-**문제** 첫 번째 초안이 항상 최선이 아니고, 청크 단위 검색만으로는 짧은 결정적 문장을 놓칩니다. 긴 컨텍스트는 LLM 비용과 노이즈를 높입니다.
-
-**해결**
-- Self-Refinement: Draft → Critique → Refine 3단계 자기 비판·재작성
-- Multi-Vector Index: chunk / sentence / keyword 3계층 검색으로 세밀한 매칭
-- Context Compression: 유사도 낮은 문장 제거로 컨텍스트 축소
-
-**효과** 답변 완성도 향상, Context window 절약, 환각 소재 감소.
-
----
-
-### v18~v19: 캐싱 + Fallback (운영 안정성)
-
-**문제** 동일 질문을 반복할 때마다 LLM을 재호출하면 비용·지연이 낭비되고, 낮은 품질 답변이 그냥 반환됩니다.
-
-**해결**
-- `QueryResultCache` (TTL 3600초) + `AnswerCache` (TTL 1800초): 캐시 히트 시 즉시 반환
-- 평가 점수 미달 시 쿼리 재작성 → 재검색 Fallback 자동 실행
-
-**효과** 반복 질문 응답 속도·비용 감소, 저품질 답변 자동 재시도.
-
----
-
-### v20: 실패 학습 루프
-
-**문제** 실패 케이스가 쌓여도 모델이 개선되지 않습니다. 어떤 유형의 실패가 얼마나 발생하는지도 불분명합니다.
-
-**해결** `classify_failure_types()`로 실패를 5종(`low_accuracy` / `hallucination` / `incomplete_answer` / `retrieval_failure` / `low_relevance`)으로 자동 분류 → `FailureDataset`에 저장 → Fine-tune JSONL 내보내기.
-
-**효과** 실패 패턴 가시화, OpenAI fine-tuning으로 약점 도메인 직접 보완 가능.
-
----
-
-### v21~v22: 병렬화 + 프로덕션 준비
-
-**문제** Dense / BM25 / Sentence / Keyword 4개 인덱스를 순차 실행하면 지연이 누적되고, 인증·모니터링 없이는 실서비스 배포가 불가능합니다.
-
-**해결**
-- `ThreadPoolExecutor` 4-way 병렬 검색 → 전체 검색 지연 최소화
-- JWT 인증 게이트, `UserManager`(생성·삭제·비밀번호), Rate Limiting
-- P50/P95/P99 응답 지연 측정, Alert 시스템
-
-**효과** 검색 속도 대폭 개선, 사용자 격리 및 과부하 방지.
-
----
-
-### v23: 모놀리식 → 3파일 분리
-
-**문제** 단일 파일에 UI·API·RAG 로직이 혼재하면 테스트·확장·협업이 불가능합니다.
-
-**해결** 책임을 3파일로 분리:
-
-| 파일 | 역할 |
-|------|------|
-| `rag_engine.py` | 순수 RAG 로직 (UI 없음) |
-| `server_api.py` | FastAPI 서버 — JWT 인증 + REST API |
-| `client_app.py` | Streamlit 프론트엔드 — HTTP 요청만 수행 |
-
-추가: **LLM Compression**(전역 청크에서 관련 문장 직접 선별), **ToolRegistry**(계산기/날짜/단위변환/웹검색), **AsyncRAGEngine**(`asyncio.gather()`).
-
-**효과** 각 계층 독립 테스트 가능, 프론트엔드 교체 시 서버 무변경.
-
----
-
-### v24: Config 중앙화 + Service Layer
-
-**문제** 상수가 여러 파일에 하드코딩되어 환경 변경 시 다수 파일을 수정해야 합니다.
-
-**해결** `config.py`에 모든 상수 집중(환경변수 오버라이드), `routers/` 서비스 계층으로 엔드포인트 분리:
-
-```
-routers/auth.py · docs.py · chat.py · metrics.py · admin.py
+```text
+넓은 객실
+수용 인원
+주방
+주차
+아이 편의시설
 ```
 
-**효과** 환경별 설정 변경이 config.py 1곳에서 끝남, 라우터 단위 독립 유지보수.
+### 비즈니스 여행객
+
+```text
+교통 접근성
+Wi-Fi
+업무 공간
+체크인 편의성
+```
+
+RAG는 실제 숙소 데이터를 검색하고 LLM은 검색된 정보만을 기반으로 콘텐츠를 생성하도록 구성합니다.
 
 ---
 
-### v25: Multi-Hop + Self-RAG (Agentic 검색)
+# 9. Marketing Content Workflow
 
-**문제** "A와 B의 차이점과 그 원인"처럼 복합 질문은 단일 검색 한 번으로 완전한 답변을 낼 수 없습니다. 검색 결과가 부족해도 시스템이 그냥 진행합니다.
+생성 목적에 따라 출력 형식을 다르게 구성합니다.
 
-**해결**
-- **Multi-Hop**: `decompose()` → hop별 검색 → `synthesize()` 종합
-- **Self-RAG**: `check_sufficiency()` 판단 → 부족하면 `rewrite_hint`로 재검색 (최대 3회)
-
-```
-질문 → 분해 → hop1 검색+중간답 → hop2 검색+중간답 → 최종 종합
-검색 → 충분성 판단 → 부족: 재작성 → 재검색 → 결과 병합
-```
-
-**효과** 복합 질문 처리 가능, 검색 품질 자가 검증.
-
----
-
-### v26: Streaming + RAGAS 정량 평가
-
-**문제** 긴 답변이 완성될 때까지 UI가 아무것도 표시하지 않아 UX가 나쁘고, 품질을 수치로 비교할 수 없습니다.
-
-**해결**
-- SSE `POST /chat/stream`: 첫 토큰부터 실시간 표시
-- RAGAS 오프라인 평가: Faithfulness(환각 탐지) / Answer Relevancy / Context Precision
-
-```bash
-python evaluate_ragas.py --last 20   # 최근 20개 응답 품질 수치화
+```text
+숙소 정보
+    ↓
+RAG
+    ↓
+┌──────────────┬──────────────┬──────────────┐
+│ SNS Content  │ Ad Copy      │ CRM Message  │
+│              │              │              │
+│ Instagram    │ Meta Ad      │ Email        │
+│ Blog         │ Search Ad    │ Push         │
+└──────────────┴──────────────┴──────────────┘
 ```
 
-**효과** 체감 응답 속도 개선, 버전 간 품질 수치 비교 가능.
+예:
 
----
+```text
+Input
+"제주 가족 여행객 대상 광고 문구"
 
-## 버전별 해결 문제 요약
+        ↓
 
-| 버전 범위 | 테마 | 핵심 해결 |
-|-----------|------|----------|
-| v2~v5 | 기반 구축 | API 전환, 검색 품질, 청킹 |
-| v6~v8 | 답변·검색 고도화 | 출처 인용, Multi-doc, Recall |
-| v9~v11 | 관측 가능성 | 자동 평가, Tracing, 버그 수정 |
-| v12~v14 | Hybrid + 실험 | BM25 RRF, 라우팅, Ablation |
-| v15~v17 | 품질 자동화 | Self-Refine, Multi-Vector, Compression |
-| v18~v19 | 운영 안정성 | Cache, Fallback, 통합 평가 |
-| v20 | 학습 루프 | 실패 → 데이터셋 → Fine-tune |
-| v21~v22 | 프로덕션 준비 | 병렬화, 인증, 모니터링 |
-| v23 | 서비스 분리 | API 서버, 비동기 엔진, 도구 호출 |
-| v24 | 설정·구조 분리 | Config 중앙화, Service Layer (routers/) |
-| v25 | Agentic 검색 | Multi-Hop Reasoning, Self-RAG |
-| v26 | 실시간 + 검증 | Streaming SSE, RAGAS 정량 평가 |
+RAG Retrieval
 
----
+        ↓
 
-## 빠른 시작
+숙소명
+객실 크기
+수용 인원
+수영장
+주차
+제주 관광지 접근성
 
-### 1. 환경 설정
+        ↓
 
-```bash
-echo "OPENAI_API_KEY=sk-..." > .env
-```
+LLM
 
-### 2. 패키지 설치
+        ↓
 
-```bash
-pip install -r requirements.txt
-pip install ragas datasets   # RAGAS 평가 시 필요
-```
-
-### 3. 서버 실행 (터미널 1)
-
-```bash
-cd rag_v26
-python server_api.py
-# → http://localhost:8000
-# → Swagger UI: http://localhost:8000/docs
-```
-
-### 4. 클라이언트 실행 (터미널 2)
-
-```bash
-cd rag_v26
-streamlit run client_app.py
-# → http://localhost:8501
-```
-
-### 5. 기본 계정
-
-| 계정 | 비밀번호 | 권한 |
-|------|----------|------|
-| `admin` | `admin123` | 관리자 |
-| `demo` | `demo123` | 일반 사용자 |
-
-### 6. RAGAS 평가 실행
-
-```bash
-cd rag_v26
-python evaluate_ragas.py --last 20
+광고 카피
 ```
 
 ---
 
-## 폴더 구조
+# 10. 정보 정합성 검증
 
+Marketing 콘텐츠에서 가장 중요한 것은 **실제 숙소 정보와 생성 결과의 일치 여부**입니다.
+
+예를 들어 숙소에 수영장이 없는데,
+
+> "프라이빗 수영장에서 여유로운 시간을..."
+
+과 같은 콘텐츠가 생성되어서는 안 됩니다.
+
+따라서 생성 이후 Fact Validation 단계를 추가합니다.
+
+```text
+Retrieved Context
+       ↓
+Content Generation
+       ↓
+Fact Checker
+       ↓
+┌───────────────┬────────────────┐
+│ Consistent    │ Inconsistent   │
+│               │                │
+│ 콘텐츠 반환    │ 재생성 / Reject │
+└───────────────┴────────────────┘
 ```
-rag-app/
-├── rag_v23/              ← 3파일 분리 완성 (안정 버전)
+
+검증 기준:
+
+* 숙소명 일치
+* 객실 정보 일치
+* 가격 정보 일치
+* 편의시설 존재 여부
+* 이용규칙 일치
+* 지역 정보 일치
+* 정책 정보 일치
+
+---
+
+# Advanced RAG Architecture
+
+기존 RAG 시스템을 단계적으로 고도화하여 검색 품질·추론·관측 가능성·자동 평가·실패 학습·병렬화·Agentic Retrieval까지 확장합니다.
+
+```text
+                         Client
+                           │
+                           ↓
+                  Marketing Request
+                           │
+                           ↓
+                  Query Understanding
+                           │
+                           ↓
+                 Metadata / Intent
+                           │
+                           ↓
+              ┌─────────────────────┐
+              │ Retrieval Pipeline  │
+              │                     │
+              │ Dense Search        │
+              │ BM25 Search         │
+              │ Multi-Vector        │
+              │ Query Routing       │
+              │ Metadata Filtering  │
+              └──────────┬──────────┘
+                         ↓
+                      Reranking
+                         ↓
+                 Context Compression
+                         ↓
+                 Multi-Hop / Self-RAG
+                         ↓
+                Marketing Generation
+                         ↓
+                   Fact Validation
+                         ↓
+                    Final Output
+```
+
+---
+
+# 기존 RAG 시스템의 기술적 진화
+
+각 버전은 실제 검색 및 생성 과정에서 발생하는 문제를 해결하는 방향으로 확장합니다.
+
+## v2~v3 — API 기반 RAG
+
+### 문제
+
+로컬 Embedding 모델의 품질과 생성 모델 성능에 한계가 존재합니다.
+
+### 해결
+
+* OpenAI Embedding API
+* GPT 기반 Generation
+* Cosine Similarity 검색
+
+### 효과
+
+기본적인 검색 및 생성 품질 확보.
+
+---
+
+# v4~v5 — Query Rewrite + Semantic Chunking
+
+### 문제
+
+사용자의 질문을 그대로 검색하면 필요한 정보가 정확하게 검색되지 않고, 고정 길이 Chunking은 숙소 정보의 의미 단위를 분리할 수 있습니다.
+
+### 해결
+
+* Query Rewrite
+* Overlap Chunking
+* Semantic Chunking
+
+### 숙박 플랫폼 적용
+
+```text
+"아이랑 제주도에서 갈 만한 숙소"
+
+        ↓
+
+"제주 지역 가족 단위 이용객에게 적합한
+숙박시설 및 가족 편의시설"
+```
+
+검색 의도를 명확하게 변환합니다.
+
+---
+
+# v6~v8 — Multi-document Retrieval
+
+### 문제
+
+숙소 정보가 여러 데이터 영역에 분산되어 있습니다.
+
+```text
+Property
+Room
+Amenity
+Policy
+Location
+```
+
+단일 Chunk만 검색해서는 충분한 정보를 확보하기 어렵습니다.
+
+### 해결
+
+Multi-document Retrieval 및 Multi-document Chain을 적용합니다.
+
+```text
+숙소 기본정보
+      +
+객실정보
+      +
+편의시설
+      +
+지역정보
+      ↓
+통합 Context
+      ↓
+Marketing Content
+```
+
+---
+
+# v9~v11 — Observability
+
+### 문제
+
+어떤 검색 결과가 콘텐츠 품질에 영향을 미쳤는지 확인하기 어렵습니다.
+
+### 해결
+
+* Retrieval latency
+* Reranking latency
+* Token usage
+* Search score
+* Generation latency
+* LLM evaluation
+
+등을 추적합니다.
+
+이를 통해 RAG Pipeline을 **블랙박스가 아닌 관측 가능한 시스템**으로 전환합니다.
+
+---
+
+# v12~v14 — Hybrid Search + Routing
+
+### 문제
+
+Dense Search만 사용하면 숙소명·지역명·편의시설명과 같은 정확한 키워드 검색에서 Recall이 떨어질 수 있습니다.
+
+### 해결
+
+```text
+Dense Search
+      +
+BM25
+      ↓
+RRF
+      ↓
+Reranking
+```
+
+또한 Query Routing을 통해 질문 유형에 따라 검색 전략을 다르게 적용합니다.
+
+```text
+숙소 정보 질문
+→ Metadata + Dense
+
+편의시설 질문
+→ Keyword + Dense
+
+지역 추천
+→ Metadata + Dense
+
+복합 마케팅 요청
+→ Multi-step Retrieval
+```
+
+---
+
+# v15~v17 — Quality Optimization
+
+### Self-Refinement
+
+```text
+Draft
+ ↓
+Critique
+ ↓
+Refine
+```
+
+생성된 마케팅 콘텐츠를 다시 검토하여 품질을 개선합니다.
+
+### Multi-Vector
+
+```text
+Chunk Vector
+Sentence Vector
+Keyword Vector
+```
+
+숙소 정보의 검색 단위를 세분화합니다.
+
+### Context Compression
+
+검색된 전체 정보를 그대로 LLM에 전달하지 않고 관련성이 낮은 문장을 제거하여 Context를 압축합니다.
+
+---
+
+# v18~v19 — Cache + Fallback
+
+### 문제
+
+동일한 숙소 정보에 대해 반복적인 요청이 발생할 경우 API 비용과 응답 지연이 증가합니다.
+
+### 해결
+
+```text
+Query
+ ↓
+Cache Check
+ ↓
+Hit → 기존 결과 반환
+ ↓
+Miss
+ ↓
+RAG Retrieval
+```
+
+검색 품질이 일정 기준 이하인 경우 자동으로 재검색합니다.
+
+```text
+Retrieval
+ ↓
+Quality Check
+ ↓
+Low Score
+ ↓
+Query Rewrite
+ ↓
+Re-retrieval
+```
+
+---
+
+# v20 — Failure Learning
+
+검색이나 생성 과정에서 발생한 실패를 자동으로 수집합니다.
+
+```text
+Failure
+ ↓
+Classification
+ ↓
+Failure Dataset
+ ↓
+JSONL
+ ↓
+Analysis / Fine-tuning
+```
+
+주요 실패 유형:
+
+```text
+low_accuracy
+hallucination
+incomplete_answer
+retrieval_failure
+low_relevance
+```
+
+숙소 정보 기반 콘텐츠 생성에서 어떤 정보 유형이 반복적으로 실패하는지 분석할 수 있습니다.
+
+---
+
+# v21~v22 — Parallel Retrieval + Production
+
+여러 검색 채널을 병렬 실행하여 검색 지연시간을 줄입니다.
+
+```text
+              Query
+                │
+       ┌────────┼────────┐
+       ↓        ↓        ↓
+     Dense    BM25    Keyword
+       │        │        │
+       └────────┼────────┘
+                ↓
+               RRF
+```
+
+또한:
+
+* JWT Authentication
+* Rate Limiting
+* P50 / P95 / P99 Latency
+* Monitoring
+* Alert
+
+등을 추가하여 서비스 운영 환경을 고려합니다.
+
+---
+
+# v23 — Architecture Separation
+
+RAG Engine과 API, Client를 분리합니다.
+
+```text
+rag_engine.py
+     │
+     │
+server_api.py
+     │
+     │
+client_app.py
+```
+
+| 파일              | 역할                      |
+| --------------- | ----------------------- |
+| `rag_engine.py` | 검색·Reranking·Generation |
+| `server_api.py` | FastAPI API             |
+| `client_app.py` | Streamlit Client        |
+
+각 계층의 책임을 분리하여 독립적인 테스트와 유지보수가 가능하도록 구성합니다.
+
+---
+
+# v24 — Config + Service Layer
+
+환경 설정과 API Router를 분리합니다.
+
+```text
+config.py
+deps.py
+
+routers/
+├── auth.py
+├── properties.py
+├── search.py
+├── marketing.py
+└── metrics.py
+```
+
+숙소·검색·마케팅 콘텐츠 생성 등 도메인별 API 책임을 분리합니다.
+
+---
+
+# v25 — Agentic Retrieval
+
+### 문제
+
+복합적인 마케팅 요청은 단일 검색으로 처리하기 어렵습니다.
+
+예:
+
+> "제주도에서 4인 가족이 머물기 좋고 수영장이 있는 숙소를 찾아서 인스타그램 광고 문구를 만들어줘."
+
+### 해결
+
+질문을 여러 작업으로 분해합니다.
+
+```text
+User Request
+      ↓
+Task Decomposition
+      ↓
+┌─────────────────────────┐
+│ 1. 지역 = 제주            │
+│ 2. 수용인원 >= 4          │
+│ 3. 수영장 존재             │
+│ 4. 숙소 정보 검색           │
+│ 5. 마케팅 콘텐츠 생성       │
+└────────────┬────────────┘
+             ↓
+       Retrieval
+             ↓
+       Content Generation
+```
+
+Self-RAG를 통해 검색 결과가 충분한지 판단하고 부족할 경우 검색을 반복합니다.
+
+---
+
+# v26 — Streaming + RAGAS Evaluation
+
+### Streaming
+
+마케팅 콘텐츠 생성 결과를 SSE를 통해 실시간으로 전달합니다.
+
+```text
+Request
+ ↓
+Retrieval
+ ↓
+Generation
+ ↓
+Token Streaming
+ ↓
+Client
+```
+
+### RAGAS
+
+RAG 시스템의 품질을 정량적으로 평가합니다.
+
+* Faithfulness
+* Answer Relevancy
+* Context Precision
+
+이를 통해 버전별 검색·생성 품질을 비교할 수 있습니다.
+
+---
+
+# Airbnb형 플랫폼 적용 Architecture
+
+최종적으로 RAG-Marketing은 Airbnb형 플랫폼의 Marketing Team에서 다음과 같이 활용됩니다.
+
+```text
+                    Airbnb Platform
+                           │
+                    Property Database
+                           │
+        ┌──────────────────┼──────────────────┐
+        ↓                  ↓                  ↓
+     Property            Room             Amenity
+        │                  │                  │
+        └──────────────────┼──────────────────┘
+                           ↓
+                    Indexing Pipeline
+                           ↓
+                     Vector DB
+                           ↓
+                    RAG Retrieval
+                           ↓
+                Customer / Marketing Intent
+                           ↓
+                    Content Generation
+                           ↓
+                    Fact Validation
+                           ↓
+              ┌────────────┼────────────┐
+              ↓            ↓            ↓
+           SNS Copy     Ad Copy      CRM Copy
+```
+
+---
+
+# 전체 플랫폼과의 연결
+
+RAG-Marketing은 Airbnb형 숙박 플랫폼에서 **Marketing Team의 AI 업무 자동화**를 담당합니다.
+
+```text
+                         Airbnb Platform
+                                │
+          ┌─────────────────────┼─────────────────────┐
+          ↓                     ↓                     ↓
+       Product               Marketing             Growth
+          │                     │                     │
+    ML-Product             RAG-Marketing          Data-Growth
+          │                     │                     │
+     수요 예측             숙소 정보 활용          CRO Analytics
+     예약 수요             콘텐츠 생성             Dashboard
+          │                     │                     │
+          └─────────────────────┼─────────────────────┘
+                                ↓
+                         Customer Support
+                                │
+                      Agent-Customer-Support
+                                │
+                         CS 업무 자동화
+```
+
+### Product
+
+```text
+숙소·지역별 예약 수요
+        ↓
+ML
+        ↓
+수요 예측
+```
+
+### Marketing
+
+```text
+숙소 상세정보
+        ↓
+RAG
+        ↓
+고객 세그먼트별 콘텐츠
+```
+
+### Growth
+
+```text
+고객 행동 데이터
+        ↓
+Analytics
+        ↓
+CRO
+        ↓
+전환율 개선
+```
+
+### Customer Support
+
+```text
+고객 문의
+        ↓
+Agent
+        ↓
+예약 / 숙소 / 정책 조회
+        ↓
+취소 / 환불 / 문의 처리
+```
+
+---
+
+# 기술 스택
+
+### AI / RAG
+
+* Python
+* OpenAI API
+* Embedding
+* FAISS
+* BM25
+* Hybrid Search
+* Reranking
+* Multi-Vector Retrieval
+* Query Routing
+* Multi-Hop Retrieval
+* Self-RAG
+* RAGAS
+
+### Backend
+
+* FastAPI
+* Pydantic
+* JWT
+* REST API
+* SSE
+
+### Frontend
+
+* Streamlit
+* HTML / CSS
+
+### Data
+
+* PostgreSQL
+* Vector DB
+* JSONL
+* Metadata Schema
+
+---
+
+# 프로젝트 구조
+
+```text
+RAG-Marketing/
+│
+├── rag_v23/
 │   ├── rag_engine.py
 │   ├── server_api.py
 │   └── client_app.py
-├── rag_v24/              ← Config 분리 + Service Layer
+│
+├── rag_v24/
 │   ├── config.py
 │   ├── deps.py
 │   ├── rag_engine.py
 │   ├── server_api.py
 │   ├── client_app.py
 │   └── routers/
-├── rag_v25/              ← Multi-Hop + Self-RAG
-│   └── (v24 구조 동일)
-├── rag_v26/              ← Streaming + RAGAS (최신)
+│
+├── rag_v25/
+│   └── ...
+│
+├── rag_v26/
 │   ├── evaluate_ragas.py
-│   └── (v25 구조 동일)
-├── rag_versions/         ← v2~v22 단일 파일 히스토리
-├── change_logs/          ← 버전별 변동사항 요약
+│   └── ...
+│
+├── rag_versions/
+├── change_logs/
+├── docs/
+│   ├── property-schema.md
+│   ├── metadata-schema.md
+│   ├── retrieval-strategy.md
+│   ├── marketing-workflow.md
+│   └── evaluation.md
+│
 └── requirements.txt
 ```
+
+---
+
+# 핵심 설계 원칙
+
+## SSoT
+
+숙소 정보의 원천을 명확하게 정의하고 RAG가 존재하지 않는 숙소 정보를 생성하지 않도록 합니다.
+
+```text
+Property DB
+    ↓
+Knowledge Base
+    ↓
+RAG
+    ↓
+Content
+```
+
+---
+
+## Metadata First
+
+숙소·객실·지역·편의시설 등 도메인 정보를 Metadata로 구조화하여 검색 정확도를 높입니다.
+
+---
+
+## Retrieval Before Generation
+
+LLM이 기억이나 추론만으로 숙소 정보를 생성하지 않고 필요한 정보를 먼저 검색한 뒤 콘텐츠를 생성합니다.
+
+---
+
+## Fact Consistency
+
+생성된 마케팅 콘텐츠가 실제 숙소 정보와 일치하는지 검증합니다.
+
+---
+
+## Failure Handling
+
+검색 결과가 부족하거나 신뢰할 수 없는 경우 임의의 콘텐츠를 생성하지 않고 재검색·재생성 또는 실패 상태를 반환합니다.
+
+---
+
+## Evaluation Driven
+
+검색 및 생성 품질을 정량적으로 평가하고 실험 결과를 기반으로 Chunking·Retrieval·Prompt 전략을 개선합니다.
+
+---
+
+# 기대 효과
+
+기존의 단순한 RAG Q&A 시스템을 다음과 같은 **Marketing Intelligence Pipeline**으로 확장합니다.
+
+```text
+숙소 정보
+   ↓
+구조화
+   ↓
+Indexing
+   ↓
+Retrieval
+   ↓
+고객 세그먼트 분석
+   ↓
+Marketing Intent
+   ↓
+Content Generation
+   ↓
+Fact Validation
+   ↓
+Marketing Asset
+```
+
+이를 통해 Marketing Team이 숙소 정보를 직접 확인하고 콘텐츠를 작성하는 반복 작업을 줄이고, **실제 숙소 데이터를 근거로 고객 세그먼트별 마케팅 콘텐츠를 생성하는 AI 기반 업무 자동화 구조**를 구현합니다.
+
+---
+
+# 프로젝트 한 줄 요약
+
+> **Airbnb형 숙박 플랫폼의 숙소 상세정보를 구조화하고 RAG 기반으로 검색·조합하여 고객 세그먼트와 마케팅 목적에 맞는 콘텐츠를 생성하는 End-to-End RAG Marketing 시스템**
