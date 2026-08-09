@@ -121,6 +121,57 @@ Fact validation 실패 (없는 편의시설·가격 불일치)
 
 ---
 
+## 5. Operations
+
+> 테스트·배포·관측은 구현과 함께 붙인다. 아래는 **적용할 구성**이며, 현재 구축된 항목은 ✅로 표시했다.
+
+### Testing
+
+| 대상 | 검증 내용 |
+|------|-----------|
+| **검색 회귀** | 고정 질의셋으로 top-k가 변경 전후로 어떻게 달라지는지 감지 |
+| **FactValidator** | 수영장 없는 숙소에 수영장 문구가 나오면 반드시 차단 |
+| 청킹 | 필드 경계 분할이 필드를 섞지 않는지 |
+| 메타데이터 필터 | region·capacity 조건이 후보에서 정확히 걸러지는지 |
+| 증분 인덱싱 | 가격 1건 변경 시 해당 청크만 재생성되는지 |
+
+### CI/CD
+
+```text
+push → ruff · black
+     → pytest
+     → RAGAS 평가 실행           고정 평가셋
+     → 품질 게이트               Faithfulness·Fact Consistency 임계치 미달 시 실패
+     → docker build
+```
+
+**품질을 배포 조건으로 건다.** 검색·프롬프트를 바꿨는데 지표가 나빠지면 머지되지 않는다.
+
+### Container
+
+`Dockerfile`(FastAPI + FAISS) + `docker-compose.yml`(API · Streamlit · PostgreSQL).
+FAISS 인덱스는 볼륨으로 분리해 컨테이너 재시작 시 재색인 비용을 줄인다.
+
+### Observability
+
+| 항목 | 노출 |
+|------|------|
+| 단계별 지연 | 검색 · 리랭킹 · 압축 · 생성 span (Tracer) |
+| 토큰 사용량 | 요청당 prompt/completion 토큰 |
+| 검색 점수 분포 | 낮은 점수 구간 비율 |
+| 캐시 히트율 | 임베딩 · 답변 캐시 |
+| 실패 유형 | FailureDataset JSONL — `hallucinated_amenity` 등으로 분류 |
+
+### Scalability
+
+병목은 **FAISS in-memory**다. 단일 프로세스 메모리에 인덱스가 올라간다.
+
+- 1차: 읽기 전용 복제본을 여러 개 띄우고 인덱스 스냅샷을 공유 볼륨으로
+- 2차: 임베딩·리랭킹을 비동기 병렬로 (이미 asyncio 기반)
+- 그 이상: 숙소 수가 십만 단위가 되면 관리형 벡터 DB로 전환. **지금 규모에서는 과투자**
+
+---
+
 ## 문서 성격
 
 이 문서는 **구현 명세(Spec)** 입니다. 완성된 결과물이 아니라 만들어 가는 목표 상태를 기술합니다.
