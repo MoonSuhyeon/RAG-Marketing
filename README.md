@@ -185,7 +185,48 @@ BUSINESS   … 바비큐, 반려동물 완비
 
 ---
 
-## 5. Operations
+## 5. Reuse — 다른 시스템이 이 엔진을 쓴다
+
+검색 코어를 숙소 도메인에서 분리해 `retrieval` 패키지로 뺐다.
+문서를 `Doc`(본문 + 메타데이터 dict) 하나로 표현하고 필터를 술어 함수로 받으므로,
+숙소 스키마를 모르는 다른 시스템도 그대로 쓸 수 있다.
+
+```text
+retrieval/                     ← 도메인 비의존 코어
+├── core.py    Doc · HybridIndex(Dense+BM25+RRF) · assess
+└── embedder.py                교체 가능한 백엔드 + 해시 캐시
+        │
+        ├──→ RAG-Marketing      숙소 상세정보 검색 · 마케팅 콘텐츠 생성
+        └──→ Agent-Customer-Support   취소·환불 정책 문서 검색
+```
+
+**소비자에 따라 필요한 것이 달랐다.**
+마케팅 생성은 검색이 무언가를 돌려주면 그걸로 문구를 만들면 된다.
+그런데 에이전트는 **틀리면 안 된다** — 정책을 못 찾았는데 비슷한 다른 규정을 가져오면
+잘못된 환불 금액을 고객에게 안내하게 된다.
+
+그래서 코어에 **기권(abstain) 판정**을 추가했다.
+
+```python
+ground = assess(hits, min_score=..., min_margin=...)
+if not ground:
+    return ToolResult(False, {}, ground.reason)   # 추측하지 않고 실패한다
+```
+
+`min_margin` 이 있는 이유: 여러 문서가 비슷한 점수로 걸리면 **어느 것이 답인지 모른다**는
+뜻이다. 점수만 높고 격차가 없으면 기권하는 편이 낫다.
+
+Agent 저장소는 이 패키지를 git 의존성으로 가져다 쓴다.
+
+```text
+marketplace-retrieval @ git+https://github.com/MoonSuhyeon/RAG-Marketing.git
+```
+
+검색 구현이 두 벌 생기지 않는다.
+
+---
+
+## 6. Operations
 
 > 테스트·배포·관측은 구현과 함께 붙인다. 아래는 **적용할 구성**이며, 현재 구축된 항목은 ✅로 표시했다.
 

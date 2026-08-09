@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: marketplace-retrieval
+Version: 0.1.0
+Summary: Hybrid retrieval core (dense + BM25 + RRF) with an abstain path
+Requires-Python: >=3.11
+Requires-Dist: faiss-cpu
+Requires-Dist: rank-bm25
+Requires-Dist: numpy
+Requires-Dist: openai
