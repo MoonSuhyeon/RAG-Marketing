@@ -1,4 +1,4 @@
-# Content Generation That Cannot Invent an Amenity
+# Hybrid RAG with Fact Validation for Content Generation
 
 *Personal project*
 
