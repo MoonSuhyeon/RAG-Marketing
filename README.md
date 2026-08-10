@@ -2,6 +2,9 @@
 
 *Personal project*
 
+![Retrieval Engineering](https://img.shields.io/badge/Retrieval%20Engineering-0E1725?style=flat-square)
+![hybrid retrieval](https://img.shields.io/badge/hybrid%20retrieval-41506A?style=flat-square) ![metadata filtering](https://img.shields.io/badge/metadata%20filtering-41506A?style=flat-square) ![reranking](https://img.shields.io/badge/reranking-41506A?style=flat-square) ![grounding](https://img.shields.io/badge/grounding-41506A?style=flat-square) ![evaluation](https://img.shields.io/badge/evaluation-41506A?style=flat-square)
+
 A listing's selling points are scattered across fields — rooms, amenities,
 price, house rules, location. **Marketing has to turn those fields into copy,
 per customer segment, for every listing.** Doing it by hand does not scale;
