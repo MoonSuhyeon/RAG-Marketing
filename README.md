@@ -31,6 +31,8 @@ Built without LangChain or LlamaIndex — retrieval, reranking, compression and
 generation are implemented directly, so a bad result can be traced to the stage
 that produced it.
 
+**100% fact consistency** and **0% hallucinated amenities** across 540 generations · **96.9%** candidate reduction before search · **19 tests**
+
 ---
 
 ## Architecture
