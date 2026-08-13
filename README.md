@@ -135,36 +135,6 @@ that produced it.
 
 ---
 
-## Results
-
-100 properties → 986 chunks. Query: *Jeju · 4+ guests · pool*.
-
-| | |
-|---|---|
-| Metadata filter | 986 → **31 chunks** (96.9% narrowed) |
-| Filter precision | 100% — every returned property met all three conditions |
-| Fact consistency | **100%** across 540 generations (60 properties × 3 segments × 3 formats) |
-| Hallucinated amenity | **0%** |
-| Price change reindex | **1 chunk** of 986 |
-
-Adversarial case — copy naming two amenities the property does not have:
-
-```
-blocked · 3 violations
-  hallucinated_amenity  '와이파이' is not at this property
-  hallucinated_amenity  '조식' is not at this property
-  price_mismatch        33,000원 matches neither 210,000 nor 230,000
-```
-
-Validation is rule-based, not model self-assessment. Because the source is
-structured, the check is deterministic and pinned by tests — including alias
-normalization, wrong price, over-capacity and wrong region.
-
-The 100% figure is measured with the template backend, which composes only
-retrieved fields and therefore cannot hallucinate by construction. Swapping in
-an LLM will move that number, and that is the point at which the validator
-starts doing real work.
-
 ## Stack
 
 | | |
@@ -179,6 +149,67 @@ starts doing real work.
 
 No LangChain, no LlamaIndex. Runs without an API key; the local backends keep
 retrieval and validation testable in CI without secrets.
+
+---
+
+## Trade-offs
+
+Measured on 100 properties → 986 chunks.
+
+### Metadata filter before the vector search
+
+Business conditions have a known answer. Running them first is cheaper than
+running them last.
+
+**Buys** — for *Jeju · 4+ guests · pool*, the candidate set drops from 986 chunks
+to **31**, a 96.9% reduction, and every returned property satisfied all three
+conditions. Reranking then runs over 3% of the corpus instead of all of it, so
+the expensive stage is the one that shrinks.
+**Costs** — the query has to be parsed into filters correctly. A wrong filter
+returns nothing rather than something imperfect, which is a louder failure but
+still a failure.
+
+### Rule-based fact validation instead of LLM self-assessment
+
+Claiming a pool that does not exist is not a wrong answer; it is a guest arriving
+to a complaint.
+
+**Buys** — deterministic verdicts that tests can pin, and no extra model call per
+generation. Across 540 generations (60 properties × 3 segments × 3 formats):
+**fact consistency 100%**, **hallucinated amenity 0%**. An adversarial case
+naming two absent amenities was blocked with three violations, including a price
+that matched no room rate.
+**Costs** — it only catches what the controlled vocabulary covers. A claim
+phrased outside that vocabulary passes.
+
+The 100% is measured with the template backend, which composes retrieved fields
+and therefore cannot invent by construction. An LLM backend will move that
+number — and that is the point where the validator starts doing real work.
+
+### Incremental indexing on a content hash
+
+Prices and availability change constantly. Full reindex cost grows with catalogue
+size, not with what changed.
+
+**Buys** — a single price edit re-embeds **1 chunk of 986**. Unchanged chunks hit
+the embedding cache, so no API call is made at all.
+**Costs** — change detection has to know which fields map to which chunks. That
+mapping is now something to maintain.
+
+### FAISS in memory instead of a managed vector database
+
+**Buys** — no network hop on the search path and no per-query bill, at a scale of
+thousands of chunks where a managed service is overhead rather than help.
+**Costs** — the index rebuilds on restart and cannot scale horizontally. At
+hundreds of thousands of listings this decision reverses.
+
+### Implemented directly, without a framework
+
+**Buys** — when a result is wrong, the stage that produced it is identifiable.
+Retrieval, reranking, compression and generation are each replaceable in
+isolation, which is what made the retrieval core extractable into a shared
+package for [Agent-Customer-Support](https://github.com/MoonSuhyeon/Agent-Customer-Support).
+**Costs** — connectors and glue had to be written rather than imported.
 
 ## Run locally
 
