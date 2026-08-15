@@ -31,7 +31,7 @@ Built without LangChain or LlamaIndex — retrieval, reranking, compression and
 generation are implemented directly, so a bad result can be traced to the stage
 that produced it.
 
-**100% fact consistency** and **0% hallucinated amenities** across 540 generations · **96.9%** candidate reduction before search · **19 tests**
+**100% fact consistency** and **0% hallucinated amenities** across 540 generations · **96.9%** candidate reduction before search · **28 tests**
 
 ---
 
@@ -121,17 +121,27 @@ that produced it.
                                              ▼
               ┌──────────────────────────────────────────────┐
               │                 EVALUATION                   │
-              │  RAGAS  faithfulness · answer relevancy ·    │
-              │         context precision                    │
-              │  own    fact consistency · hallucinated      │
-              │         amenity rate                         │
-              │  ops    P50/P95/P99 · tokens · cache hit     │
-              │  FailureDataset → JSONL by failure type      │
+              │  fact consistency rate                       │
+              │  hallucinated amenity rate                   │
+              │  filter reduction before the expensive step  │
+              │  embedding cache hit rate                    │
+              │                                              │
+              │  all four are computed from the record, not  │
+              │  scored by a model — so they are pinned by   │
+              │  tests and need no API key                   │
               └──────────────────────────────────────────────┘
 
               ┌──────────────────────────────────────────────┐
               │                  SERVING                     │
-              │  FastAPI · SSE   |   Streamlit client        │
+              │  POST /index            incremental reindex  │
+              │  POST /search           filter → RRF → assess│
+              │  POST /generate         422 if validation    │
+              │                         fails after a retry  │
+              │  POST /generate/stream  stage events (SSE)   │
+              │  GET  /metrics          cache · thresholds   │
+              │                                              │
+              │  Streamlit client shows content and its      │
+              │  validation verdict side by side             │
               └──────────────────────────────────────────────┘
 ```
 
@@ -146,8 +156,8 @@ that produced it.
 | Retrieval | FAISS (IndexFlatIP) · rank_bm25 · RRF |
 | Embedding | `text-embedding-3-small` \| local hash n-gram · MD5 disk cache |
 | Generation | OpenAI SDK (`gpt-4o-mini`) \| deterministic template |
-| Evaluation | RAGAS · custom fact metrics |
-| Testing | pytest — 19 tests |
+| Evaluation | Deterministic fact metrics — computed against the record, no judge model |
+| Testing | pytest — 28 tests |
 
 No LangChain, no LlamaIndex. Runs without an API key; the local backends keep
 retrieval and validation testable in CI without secrets.
@@ -217,9 +227,16 @@ package for [Agent-Customer-Support](https://github.com/MoonSuhyeon/Agent-Custom
 
 ```bash
 pip install -r requirements.txt
-pytest                       # 19 tests
-python scripts/run_demo.py   # index → search → generate → validate
+pytest                          # 28 tests
+python scripts/run_demo.py      # index → search → generate → validate
+
+uvicorn api.server:app --reload  # API at /docs
+streamlit run api/client.py      # demo client
 ```
+
+The API refuses rather than ships: `POST /generate` returns **422** with the
+violation list when generated text disagrees with the record after one retry.
+Runs without an API key — retrieval and validation use the local backends.
 
 ## Docs
 
@@ -228,4 +245,6 @@ python scripts/run_demo.py   # index → search → generate → validate
 | `retrieval/` | Shared retrieval core, installable as `marketplace-retrieval` |
 | `app/engine/fact_validator.py` | Field-by-field grounding check |
 | `app/engine/indexer.py` | Incremental reindex on content hash |
-| `change_logs/` | v1–v26 evolution of the pipeline |
+| `docs/rag-evolution.md` | How the pipeline got here — v1 to v26, and what was dropped |
+| `api/server.py` | HTTP surface over the pipeline |
+| `tests/test_api.py` | The refusal rule holds at the API boundary too |
