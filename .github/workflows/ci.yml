@@ -1,0 +1,29 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - run: pip install -r requirements.txt
+      - run: pytest -q
+
+      # 스키마가 코드와 어긋나면 여기서 막는다. 운영 콘솔이 이 스키마로 타입을
+      # 생성하므로, 바뀐 걸 모르고 넘어가면 소비자가 조용히 깨진다.
+      - name: OpenAPI 스키마가 최신인가
+        run: |
+          python scripts/export_openapi.py
+          if ! git diff --exit-code openapi.json; then
+            echo "::error::openapi.json 이 코드와 다릅니다."
+            echo "::error::python scripts/export_openapi.py 를 돌리고 커밋하세요."
+            exit 1
+          fi

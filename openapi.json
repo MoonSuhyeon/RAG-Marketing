@@ -1,0 +1,653 @@
+{
+  "components": {
+    "schemas": {
+      "ContentFormat": {
+        "enum": [
+          "SNS",
+          "AD_COPY",
+          "CRM"
+        ],
+        "title": "ContentFormat",
+        "type": "string"
+      },
+      "GenerateRequest": {
+        "properties": {
+          "format": {
+            "$ref": "#/components/schemas/ContentFormat"
+          },
+          "property_id": {
+            "minLength": 1,
+            "title": "Property Id",
+            "type": "string"
+          },
+          "segment": {
+            "$ref": "#/components/schemas/Segment"
+          }
+        },
+        "required": [
+          "property_id",
+          "segment",
+          "format"
+        ],
+        "title": "GenerateRequest",
+        "type": "object"
+      },
+      "GenerateResponse": {
+        "properties": {
+          "attempts": {
+            "title": "Attempts",
+            "type": "integer"
+          },
+          "backend": {
+            "title": "Backend",
+            "type": "string"
+          },
+          "content": {
+            "title": "Content",
+            "type": "string"
+          },
+          "format": {
+            "$ref": "#/components/schemas/ContentFormat"
+          },
+          "property_id": {
+            "title": "Property Id",
+            "type": "string"
+          },
+          "segment": {
+            "$ref": "#/components/schemas/Segment"
+          },
+          "valid": {
+            "title": "Valid",
+            "type": "boolean"
+          },
+          "violations": {
+            "items": {
+              "$ref": "#/components/schemas/ViolationOut"
+            },
+            "title": "Violations",
+            "type": "array"
+          }
+        },
+        "required": [
+          "property_id",
+          "segment",
+          "format",
+          "backend",
+          "content",
+          "valid",
+          "attempts"
+        ],
+        "title": "GenerateResponse",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HitOut": {
+        "properties": {
+          "chunk_id": {
+            "title": "Chunk Id",
+            "type": "string"
+          },
+          "doc_type": {
+            "title": "Doc Type",
+            "type": "string"
+          },
+          "property_id": {
+            "title": "Property Id",
+            "type": "string"
+          },
+          "score": {
+            "title": "Score",
+            "type": "number"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          }
+        },
+        "required": [
+          "chunk_id",
+          "property_id",
+          "doc_type",
+          "score",
+          "text"
+        ],
+        "title": "HitOut",
+        "type": "object"
+      },
+      "IndexRequest": {
+        "properties": {
+          "count": {
+            "anyOf": [
+              {
+                "maximum": 1000.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Count"
+          },
+          "seed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Seed"
+          }
+        },
+        "title": "IndexRequest",
+        "type": "object"
+      },
+      "IndexResponse": {
+        "properties": {
+          "added": {
+            "title": "Added",
+            "type": "integer"
+          },
+          "embedded": {
+            "title": "Embedded",
+            "type": "integer"
+          },
+          "properties": {
+            "title": "Properties",
+            "type": "integer"
+          },
+          "removed": {
+            "title": "Removed",
+            "type": "integer"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          },
+          "updated": {
+            "title": "Updated",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "properties",
+          "added",
+          "updated",
+          "removed",
+          "unchanged",
+          "embedded"
+        ],
+        "title": "IndexResponse",
+        "type": "object"
+      },
+      "MetricsResponse": {
+        "properties": {
+          "backend": {
+            "title": "Backend",
+            "type": "string"
+          },
+          "chunks": {
+            "title": "Chunks",
+            "type": "integer"
+          },
+          "embedding_cache": {
+            "additionalProperties": true,
+            "title": "Embedding Cache",
+            "type": "object"
+          },
+          "indexed": {
+            "title": "Indexed",
+            "type": "boolean"
+          },
+          "properties": {
+            "title": "Properties",
+            "type": "integer"
+          },
+          "thresholds": {
+            "additionalProperties": true,
+            "title": "Thresholds",
+            "type": "object"
+          }
+        },
+        "required": [
+          "indexed",
+          "properties",
+          "chunks",
+          "backend",
+          "embedding_cache",
+          "thresholds"
+        ],
+        "title": "MetricsResponse",
+        "type": "object"
+      },
+      "PropertyType": {
+        "enum": [
+          "APARTMENT",
+          "HOTEL",
+          "GUESTHOUSE",
+          "PENSION",
+          "HOUSE"
+        ],
+        "title": "PropertyType",
+        "type": "string"
+      },
+      "SearchRequest": {
+        "properties": {
+          "max_price": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Max Price"
+          },
+          "min_capacity": {
+            "anyOf": [
+              {
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Min Capacity"
+          },
+          "property_type": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PropertyType"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "query": {
+            "minLength": 1,
+            "title": "Query",
+            "type": "string"
+          },
+          "region": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Region"
+          },
+          "required_amenities": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Required Amenities",
+            "type": "array"
+          },
+          "top_k": {
+            "default": 10,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Top K",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "title": "SearchRequest",
+        "type": "object"
+      },
+      "SearchResponse": {
+        "properties": {
+          "candidates_after_filter": {
+            "title": "Candidates After Filter",
+            "type": "integer"
+          },
+          "candidates_before_filter": {
+            "title": "Candidates Before Filter",
+            "type": "integer"
+          },
+          "filter_reduction": {
+            "title": "Filter Reduction",
+            "type": "number"
+          },
+          "grounded": {
+            "title": "Grounded",
+            "type": "boolean"
+          },
+          "hits": {
+            "items": {
+              "$ref": "#/components/schemas/HitOut"
+            },
+            "title": "Hits",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          }
+        },
+        "required": [
+          "hits",
+          "grounded",
+          "candidates_before_filter",
+          "candidates_after_filter",
+          "filter_reduction"
+        ],
+        "title": "SearchResponse",
+        "type": "object"
+      },
+      "Segment": {
+        "enum": [
+          "COUPLE",
+          "FAMILY",
+          "BUSINESS"
+        ],
+        "title": "Segment",
+        "type": "string"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      },
+      "ViolationOut": {
+        "properties": {
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "detail"
+        ],
+        "title": "ViolationOut",
+        "type": "object"
+      }
+    }
+  },
+  "info": {
+    "description": "숙소 레코드에서 세그먼트별 마케팅 문구를 만들고, 내보내기 전에 원본과 대조한다.",
+    "title": "Marketplace Content API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/generate": {
+      "post": {
+        "operationId": "generate_generate_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/GenerateResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate",
+        "tags": [
+          "generation"
+        ]
+      }
+    },
+    "/generate/stream": {
+      "post": {
+        "description": "단계별 진행을 SSE 로 흘린다.\n\n토큰 단위 스트리밍이 아니라 **파이프라인 단계** 스트리밍이다. 이 파이프라인에서\n기다리게 만드는 것은 토큰 생성이 아니라 검색과 검증이고, 진행 중에 알고 싶은\n것도 \"지금 어느 단계인가\" 이기 때문이다.",
+        "operationId": "generate_stream_generate_stream_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GenerateRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Generate Stream",
+        "tags": [
+          "generation"
+        ]
+      }
+    },
+    "/health": {
+      "get": {
+        "operationId": "health_health_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "additionalProperties": true,
+                  "title": "Response Health Health Get",
+                  "type": "object"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Health",
+        "tags": [
+          "system"
+        ]
+      }
+    },
+    "/index": {
+      "post": {
+        "description": "데모 숙소를 생성해 색인한다.\n\n인덱스 구조 자체는 매번 다시 만든다. 비싼 것은 그쪽이 아니라 임베딩이고,\n콘텐츠 해시가 같은 청크는 디스크 캐시에서 나오므로 ``embedded`` 가 0에 가깝다.\n숙소 한 곳만 바뀌었을 때는 ``PropertyIndexer.upsert`` 가 그 청크만 건드린다.",
+        "operationId": "build_index_index_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "anyOf": [
+                  {
+                    "$ref": "#/components/schemas/IndexRequest"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Body"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IndexResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Build Index",
+        "tags": [
+          "retrieval"
+        ]
+      }
+    },
+    "/metrics": {
+      "get": {
+        "operationId": "metrics_metrics_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MetricsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Metrics",
+        "tags": [
+          "monitoring"
+        ]
+      }
+    },
+    "/search": {
+      "post": {
+        "operationId": "search_search_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SearchRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Search",
+        "tags": [
+          "retrieval"
+        ]
+      }
+    }
+  }
+}
