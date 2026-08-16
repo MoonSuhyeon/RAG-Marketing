@@ -8,10 +8,6 @@ pydantic>=2.9
 fastapi
 uvicorn[standard]
 
-# 데모 클라이언트
-streamlit
-requests
-
 # 선택 — 있으면 OpenAI 백엔드, 없으면 로컬 해시 임베더 + 템플릿 생성기로 동작한다.
 # 검색과 사실 검증은 키 없이도 전부 테스트된다.
 openai

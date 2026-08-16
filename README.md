@@ -140,8 +140,8 @@ that produced it.
               │  POST /generate/stream  stage events (SSE)   │
               │  GET  /metrics          cache · thresholds   │
               │                                              │
-              │  Streamlit client shows content and its      │
-              │  validation verdict side by side             │
+              │  The operator console (in Data-Growth)       │
+              │  shows content and its verdict side by side  │
               └──────────────────────────────────────────────┘
 ```
 
@@ -152,7 +152,7 @@ that produced it.
 | | |
 |---|---|
 | Language | Python 3.11 |
-| Serving | FastAPI · Pydantic v2 · SSE · Streamlit |
+| Serving | FastAPI · Pydantic v2 · SSE |
 | Retrieval | FAISS (IndexFlatIP) · rank_bm25 · RRF |
 | Embedding | `text-embedding-3-small` \| local hash n-gram · MD5 disk cache |
 | Generation | OpenAI SDK (`gpt-4o-mini`) \| deterministic template |
@@ -231,7 +231,6 @@ pytest                          # 28 tests
 python scripts/run_demo.py      # index → search → generate → validate
 
 uvicorn api.server:app --reload  # API at /docs
-streamlit run api/client.py      # demo client
 ```
 
 The API refuses rather than ships: `POST /generate` returns **422** with the
