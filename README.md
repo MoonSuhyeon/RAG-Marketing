@@ -237,6 +237,13 @@ The API refuses rather than ships: `POST /generate` returns **422** with the
 violation list when generated text disagrees with the record after one retry.
 Runs without an API key — retrieval and validation use the local backends.
 
+The console that calls this API lives in
+[Data-Growth](https://github.com/MoonSuhyeon/Data-Growth) — one operator screen for four services rather than four
+separate UIs. It generates its TypeScript types from the `openapi.json` committed
+here, so a change to this schema breaks its build instead of silently rendering a
+wrong value.
+
+
 ## Docs
 
 | | |
