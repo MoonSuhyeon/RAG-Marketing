@@ -14,8 +14,31 @@ from api.server import app
 from api.state import runtime
 
 
+@pytest.fixture(scope="module", autouse=True)
+def cold_cache(tmp_path_factory):
+    """임베딩 캐시를 **비운 상태에서** 시작한다.
+
+    캐시는 디스크(`.embed_cache`)에 남는다. 개발 기계에는 이전 실행의 캐시가
+    쌓여 있어서, 캐시를 쓰는지 확인하는 테스트가 **첫 색인부터 이미 히트**한 채로
+    통과한다. CI 는 매번 빈 상태라 같은 테스트가 거기서만 깨진다.
+
+    실제로 그랬다 — 로컬 통과, CI 실패였고 원인은 캐시가 아니라 `index_all` 이
+    **누적** 미스를 보고하던 버그였다. 로컬 캐시가 그 버그를 가리고 있었다.
+
+    `CACHE_DIR` 을 바꾸는 것으로는 안 된다. `EmbeddingCache.__init__` 의 기본
+    인자가 **정의 시점에** 묶이고, 런타임 캐시는 import 때 이미 만들어져 있다.
+    그래서 살아 있는 객체의 뿌리와 카운터를 직접 갈아끼운다.
+    """
+    cache = runtime.indexer.embedder.cache
+    root = tmp_path_factory.mktemp("embed_cache")
+    old_root, old_hits, old_misses = cache.root, cache.hits, cache.misses
+    cache.root, cache.hits, cache.misses = root, 0, 0
+    yield
+    cache.root, cache.hits, cache.misses = old_root, old_hits, old_misses
+
+
 @pytest.fixture(scope="module")
-def client() -> TestClient:
+def client(cold_cache) -> TestClient:
     c = TestClient(app)
     c.post("/index", json={"count": 60, "seed": 7})
     return c

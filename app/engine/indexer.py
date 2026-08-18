@@ -49,6 +49,11 @@ class PropertyIndexer:
     # ------------------------------------------------------------ 최초 색인
     def index_all(self, properties: list[Property]) -> IndexReport:
         report = IndexReport()
+        # **이번 호출에서 새로 임베딩한 수**를 재려면 시작점을 잡아야 한다.
+        # `cache.misses` 는 캐시 객체가 사는 동안 계속 쌓이는 누적값이라, 그대로
+        # 쓰면 두 번째 색인부터 "이번에 몇 개를 임베딩했나" 가 아니라 "지금까지
+        # 몇 개를 임베딩했나" 가 된다. `upsert` 는 이미 이렇게 재고 있었다.
+        before = self.embedder.cache.misses
         chunks: list[Chunk] = []
         for p in properties:
             self.properties[p.property_id] = p
@@ -62,7 +67,7 @@ class PropertyIndexer:
             self._chunks[c.chunk_id] = c
 
         report.added = len(chunks)
-        report.embedded = self.embedder.cache.misses
+        report.embedded = self.embedder.cache.misses - before
         report.properties_touched = [p.property_id for p in properties]
         return report
 
