@@ -1,11 +1,16 @@
+# ── OpenAPI 산출물에 영향을 주는 것은 **정확히** 고정한다 ────────────────
+# openapi.json 을 커밋해 두고 CI 가 드리프트를 막는 구조인데, 생성기 버전이 안
+# 묶여 있으면 그 검사가 성립하지 않는다. 같은 코드라도 FastAPI·Pydantic 버전이
+# 다르면 스키마 모양이 달라진다(ValidationError 의 ctx·input 필드 등).
 # 파이프라인
 numpy
 faiss-cpu
 rank-bm25
-pydantic>=2.9
+pydantic==2.13.3
 
 # HTTP 표면
-fastapi
+fastapi==0.115.6
+starlette==0.41.3
 uvicorn[standard]
 
 # 선택 — 있으면 OpenAI 백엔드, 없으면 로컬 해시 임베더 + 템플릿 생성기로 동작한다.
